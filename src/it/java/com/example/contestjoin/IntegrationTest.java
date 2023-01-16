@@ -1,9 +1,6 @@
 package com.example.contestjoin;
 
-import com.example.contestjoin.Main;
 import kalix.springsdk.testkit.KalixIntegrationTestKitSupport;
-
-import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.runner.RunWith;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,13 +10,13 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.junit4.SpringRunner;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 
 /**
@@ -44,50 +41,37 @@ public class IntegrationTest extends KalixIntegrationTestKitSupport {
   @Test
   public void happyPath() throws Exception {
     var contestName = "contest1";
-    var requests = IntStream.range(0,6).mapToObj(i -> "username-"+i).map(username -> new Model.JoinContest(username)).collect(Collectors.toList());
+    var userName1 = "userName1";
+    var userName2 = "userName2";
+    var userName3 = "userName3";
 
-    ResponseEntity<Model.EmptyResponse> resProcess = sendJoin(contestName,requests.get(0));
+    //Send join for userName1
+    ResponseEntity<Model.EmptyResponse> resProcess = sendJoin(contestName,userName1);
     assertEquals(HttpStatus.OK,resProcess.getStatusCode());
-
     ResponseEntity<Model.GetResponse> getRes = getState(contestName);
-    assertEquals(1,getRes.getBody().queued().size());
-    assertEquals(0,getRes.getBody().processed().size());
+    assertEquals(1,getRes.getBody().processed().size());
 
-    resProcess = sendJoin(contestName,requests.get(1));
+    //Re-send join for userName1 - deduplication
+    resProcess = sendJoin(contestName,userName1);
     assertEquals(HttpStatus.OK,resProcess.getStatusCode());
-
     getRes = getState(contestName);
-    assertEquals(0,getRes.getBody().queued().size());
+    assertEquals(1,getRes.getBody().processed().size());
+
+    //Send join for userName2
+    resProcess = sendJoin(contestName,userName2);
+    assertEquals(HttpStatus.OK,resProcess.getStatusCode());
+    getRes = getState(contestName);
     assertEquals(2,getRes.getBody().processed().size());
 
-    resProcess = sendJoin(contestName,requests.get(2));
-    assertEquals(HttpStatus.OK,resProcess.getStatusCode());
-    resProcess = sendJoin(contestName,requests.get(3));
-    assertEquals(HttpStatus.OK,resProcess.getStatusCode());
+    //Send join for userName3
 
-    getRes = getState(contestName);
-    assertEquals(0,getRes.getBody().queued().size());
-    assertEquals(4,getRes.getBody().processed().size());
-
-    resProcess = sendJoin(contestName,requests.get(4));
-    assertEquals(HttpStatus.OK,resProcess.getStatusCode());
-
-//    resProcess = sendJoin(contestName,requests.get(4));
-//    assertEquals(HttpStatus.ALREADY_REPORTED,resProcess.getStatusCode());
-
-    getRes = getState(contestName);
-    assertEquals(0,getRes.getBody().queued().size());
-    assertEquals(5,getRes.getBody().processed().size());
-
-//    resProcess = sendJoin(contestName,requests.get(5));
-//    assertEquals(HttpStatus.BAD_REQUEST,resProcess.getStatusCode());
-
+    assertThrows(WebClientResponseException.BadRequest.class,()->sendJoin(contestName,userName3));
 
   }
 
-  private ResponseEntity<Model.EmptyResponse> sendJoin(String contestName, Model.JoinContest request){
+  private ResponseEntity<Model.EmptyResponse> sendJoin(String contestName, String userName){
     return webClient.post().uri("/contest/"+contestName+"/join")
-            .bodyValue(request)
+            .bodyValue(new Model.JoinContest(userName))
             .retrieve()
             .toEntity(Model.EmptyResponse.class)
             .block(timeout);

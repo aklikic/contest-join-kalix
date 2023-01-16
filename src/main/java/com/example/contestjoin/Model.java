@@ -4,8 +4,6 @@ import kalix.springsdk.annotations.TypeName;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public sealed interface Model {
     record JoinContest(String userName) implements Model {}
@@ -15,8 +13,7 @@ public sealed interface Model {
         }
     }
 
-    record GetResponse(int maxAvailableSpots, List<JoinContest> processed, List<JoinContest> queued)implements Model{}
-
+    record GetResponse(int maxAvailableSpots, List<JoinContest> processed)implements Model{}
 
 
     record State(int maxAvailableSpots, List<JoinContest> processed) implements Model{
@@ -24,12 +21,17 @@ public sealed interface Model {
             return new State(maxAvailableSpots,new ArrayList<>());
         }
 
-        public State handleProcessedContestJoinBatch(ProcessedContestJoinBatch event){
-            var newList = Stream.concat(processed().stream(), event.list.stream()).collect(Collectors.toList());
-            return new State(maxAvailableSpots,newList);
+        public State handleContestJoinProcessed(ContestJoinProcessed event){
+            processed.add(event.join());
+            return new State(maxAvailableSpots,processed);
         }
+
+        public boolean checkDuplicate(JoinContest join){
+            return processed().stream().filter(cj -> cj.userName().equalsIgnoreCase(join.userName())).findFirst().isPresent();
+        }
+
     }
 
-    @TypeName("processed-contest-join-batch")
-    record ProcessedContestJoinBatch(List<Model.JoinContest> list) implements Model{}
+    @TypeName("contest-join-processed")
+    record ContestJoinProcessed(Model.JoinContest join) implements Model{}
 }
